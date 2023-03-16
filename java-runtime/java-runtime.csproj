@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.Build.NoTargets">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+  </PropertyGroup>
+  
+  <Import Project="..\..\Configuration.props" />
+  <Import Project="..\..\build-tools\scripts\Jar.targets" />
+
+  <PropertyGroup>
+    <OutputPath>$(MicrosoftAndroidSdkOutDir)</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\r8\r8.csproj" ReferenceOutputAssembly="False" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <AllRuntimeSource Include="java/mono/**/*.java" />
+    <AllRuntimeSource Include="..\..\src-ThirdParty\bazel\java\mono\**\*.java" />
+    <AllRuntimeSource Include="$(JavaInteropSourceDirectory)\src\Java.Interop\java\com\xamarin\**\*.java" />
+  </ItemGroup>
+  
+  <Import Project="java-runtime.targets" />
+</Project>

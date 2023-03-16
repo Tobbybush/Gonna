@@ -1,0 +1,7 @@
+﻿{
+  "author": "Microsoft",
+  "name": "Aplicativo Android",
+  "description": "Um projeto para criar um aplicativo Android .NET",
+  "symbols/packageName/description": "Substitui o nome do pacote no AndroidManifest.xml",
+  "symbols/supportedOSVersion/description": "Substitui a $(SupportedOSPlatformVersion) no projeto"
+}

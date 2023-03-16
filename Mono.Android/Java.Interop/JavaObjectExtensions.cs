@@ -1,0 +1,145 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using Android.Runtime;
+
+namespace Java.Interop {
+
+	public static class JavaObjectExtensions {
+
+		[Obsolete ("Use Android.Runtime.JavaCollection.ToLocalJniHandle()")]
+		public static JavaCollection ToInteroperableCollection (this ICollection instance)
+		{
+			return instance is JavaCollection ? (JavaCollection) instance : new JavaCollection (instance);
+		}
+
+		[Obsolete ("Use Android.Runtime.JavaCollection<T>.ToLocalJniHandle()")]
+		public static JavaCollection<T> ToInteroperableCollection<T> (this ICollection<T> instance)
+		{
+			return instance is JavaCollection<T> ? (JavaCollection<T>) instance : new JavaCollection<T> (instance);
+		}
+
+		[Obsolete ("Use Android.Runtime.JavaList.ToLocalJniHandle()")]
+		public static JavaList ToInteroperableCollection (this IList instance)
+		{
+			return instance is JavaList ? (JavaList) instance : new JavaList (instance);
+		}
+
+		[Obsolete ("Use Android.Runtime.JavaList<T>.ToLocalJniHandle()")]
+		public static JavaList<T> ToInteroperableCollection<T> (this IList<T> instance)
+		{
+			return instance is JavaList<T> ? (JavaList<T>) instance : new JavaList<T> (instance);
+		}
+
+		[Obsolete ("Use Android.Runtime.JavaDictionary.ToLocalJniHandle()")]
+		public static JavaDictionary ToInteroperableCollection (this IDictionary instance)
+		{
+			return instance is JavaDictionary ? (JavaDictionary) instance : new JavaDictionary (instance);
+		}
+
+		[Obsolete ("Use Android.Runtime.JavaDictionary<K, V>.ToLocalJniHandle()")]
+		public static JavaDictionary<K,V> ToInteroperableCollection<K,V> (this IDictionary<K,V> instance)
+		{
+			return instance is JavaDictionary<K,V> ? (JavaDictionary<K,V>) instance : new JavaDictionary<K,V> (instance);
+		}
+
+		[return: NotNullIfNotNull ("instance")]
+		public static TResult? JavaCast<TResult> (this IJavaObject? instance)
+			where TResult : class, IJavaObject
+		{
+			return _JavaCast<TResult> (instance);
+		}
+
+		[return: MaybeNull]
+		internal static TResult _JavaCast<TResult> (this IJavaObject? instance)
+		{
+			if (instance == null)
+				return default (TResult);
+
+			if (instance is TResult)
+				return (TResult) instance;
+
+			if (instance.Handle == IntPtr.Zero)
+				throw new ObjectDisposedException (instance.GetType ().FullName);
+
+			Type resultType = typeof (TResult);
+			if (resultType.IsClass) {
+				return (TResult) CastClass (instance, resultType);
+			}
+			else if (resultType.IsInterface) {
+				return (TResult) Java.Lang.Object.GetObject (instance.Handle, JniHandleOwnership.DoNotTransfer, resultType);
+			}
+			else
+				throw new NotSupportedException (string.Format ("Unable to convert type '{0}' to '{1}'.",
+							instance.GetType ().FullName, resultType.FullName));
+		}
+
+		static IJavaObject CastClass (IJavaObject instance, Type resultType)
+		{
+			var klass = JNIEnv.FindClass (resultType);
+			try {
+				if (klass == IntPtr.Zero)
+					throw new ArgumentException ("Unable to determine JNI class for '" + resultType.FullName + "'.", "TResult");
+				if (!JNIEnv.IsInstanceOf (instance.Handle, klass))
+					throw new InvalidCastException (
+							string.Format ("Unable to convert instance of type '{0}' to type '{1}'.",
+								instance.GetType ().FullName, resultType.FullName));
+			} finally {
+				JNIEnv.DeleteGlobalRef (klass);
+			}
+
+			if (resultType.IsAbstract) {
+				// TODO: keep in sync with TypeManager.CreateInstance() algorithm
+				var invokerType = GetInvokerType (resultType);
+				if (invokerType == null)
+					throw new ArgumentException ("Unable to get Invoker for abstract type '" + resultType.FullName + "'.", "TResult");
+				resultType = invokerType;
+			}
+			return (IJavaObject) TypeManager.CreateProxy (resultType, instance.Handle, JniHandleOwnership.DoNotTransfer);
+		}
+
+		internal static IJavaObject? JavaCast (IJavaObject? instance, Type resultType)
+		{
+			if (resultType == null)
+				throw new ArgumentNullException ("resultType");
+
+			if (instance == null)
+				return null;
+
+			if (resultType.IsAssignableFrom (instance.GetType ()))
+				return instance;
+
+			if (resultType.IsClass) {
+				return CastClass (instance, resultType);
+			}
+			else if (resultType.IsInterface) {
+				return (IJavaObject?) Java.Lang.Object.GetObject (instance.Handle, JniHandleOwnership.DoNotTransfer, resultType);
+			}
+			else
+				throw new NotSupportedException (string.Format ("Unable to convert type '{0}' to '{1}'.",
+							instance.GetType ().FullName, resultType.FullName));
+		}
+
+		// typeof(Foo) -> FooInvoker
+		// typeof(Foo<>) -> FooInvoker`1
+		[UnconditionalSuppressMessage ("Trimming", "IL2026", Justification = "*Invoker types are preserved by the MarkJavaObjects linker step.")]
+		internal static Type? GetInvokerType (Type type)
+		{
+			const string suffix = "Invoker";
+			Type[] arguments = type.GetGenericArguments ();
+			if (arguments.Length == 0)
+				return type.Assembly.GetType (type + suffix);
+			Type definition = type.GetGenericTypeDefinition ();
+			int bt = definition.FullName!.IndexOf ("`", StringComparison.Ordinal);
+			if (bt == -1)
+				throw new NotSupportedException ("Generic type doesn't follow generic type naming convention! " + type.FullName);
+			Type? suffixDefinition = definition.Assembly.GetType (
+					definition.FullName.Substring (0, bt) + suffix + definition.FullName.Substring (bt));
+			if (suffixDefinition == null)
+				return null;
+			return suffixDefinition.MakeGenericType (arguments);
+		}
+	}
+}
